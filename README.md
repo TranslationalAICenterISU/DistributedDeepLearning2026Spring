@@ -71,7 +71,7 @@ ranks without the overhead of inter-node networking.
 ```bash
 #SBATCH -N 1                          # exactly 1 node
 #SBATCH --ntasks-per-node=4           # 4 tasks → 4 ranks on that node
-#SBATCH --gres=gpu:a100-sxm:4        # 4 GPUs allocated to that node
+#SBATCH --gres=gpu:a100:4        # 4 GPUs allocated to that node
 ```
 
 And in the `torchrun` call:
@@ -90,7 +90,7 @@ Used by modules 02, 03, and 05 in their default configuration.
 ```bash
 #SBATCH -N 2                          # 2 nodes
 #SBATCH --ntasks-per-node=1           # 1 task (rank) per node
-#SBATCH --gres=gpu:a100-sxm:1        # 1 GPU per node
+#SBATCH --gres=gpu:a100:1        # 1 GPU per node
 ```
 
 ```bash
@@ -104,7 +104,7 @@ Combine both: e.g. 2 nodes × 4 GPUs = world size 8.
 ```bash
 #SBATCH -N 2
 #SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:a100-sxm:4
+#SBATCH --gres=gpu:a100:4
 ```
 
 ```bash
@@ -250,7 +250,7 @@ large for one GPU but fits across two.
 ```bash
 # In train_mp.sh — change GPU count only, node count stays 1
 #SBATCH -N 1
-#SBATCH --gres=gpu:a100-sxm:2        # must be on the same node
+#SBATCH --gres=gpu:a100:2        # must be on the same node
 ```
 
 Note: `DATA_DIR` uses `$TMPDIR` (node-local scratch) to avoid file-corruption when
@@ -281,7 +281,7 @@ To use 4 GPUs on a single `ach` node instead:
 ```bash
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:a100-sxm:4
+#SBATCH --gres=gpu:a100:4
 # and in the torchrun line:
 torchrun --nnodes=1 --nproc-per-node=4 ...
 ```
@@ -363,7 +363,7 @@ tail -f fashion_ddp_<jobid>.out
 salloc -N 1 --gres=gpu:a100-pcie:1 -p nova -A short_term -t 01:00:00
 
 # Interactive GPU session on ach (DeepL reservation)
-salloc -N 1 --gres=gpu:a100-sxm:1 -p ach -A deepl -t 01:00:00
+salloc -N 1 --gres=gpu:a100:1 -p ach -A deepl -t 01:00:00
 ```
 
 ---
