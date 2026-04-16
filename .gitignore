@@ -1,0 +1,33 @@
+# Slurm job output / error logs
+*.out
+*.err
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets (downloaded at runtime)
+data/
+fashion_mnist/
+
+# Model checkpoints (large binaries)
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Ollama binaries and libraries (large, platform-specific)
+inference/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
