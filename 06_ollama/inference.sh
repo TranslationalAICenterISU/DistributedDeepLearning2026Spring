@@ -26,13 +26,9 @@ OLLAMA_PID=$!
 echo "Started ollama serve (PID $OLLAMA_PID)"
 sleep 8
 
-# ── Pull models if not already cached ─────────────────────────────
-for MODEL in gpt-oss:20b qwen3.6 gemma4; do
-    echo "Pulling $MODEL (skipped if already cached)..."
-    $OLLAMA_BIN pull $MODEL
-done
-
 # ── Run inference demos ───────────────────────────────────────────
+# Models are loaded from $OLLAMA_MODELS (set in config.sh).
+# Run 06_ollama/pull_models.sh once beforehand if not yet downloaded.
 $MICROMAMBA_BIN run -p $ENV_PREFIX \
     python $SCRIPT_DIR/inference.py   \
         --host     http://localhost:11434 \

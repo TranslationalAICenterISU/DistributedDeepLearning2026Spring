@@ -20,7 +20,9 @@ DATA_DIR=${GROUP_DIR}/data
 SAVE_BASE=${GROUP_DIR}/checkpoints
 
 # Ollama binary and model storage
+# Set OLLAMA_MODELS to the pre-downloaded model directory before running jobs.
+# Run 06_ollama/pull_models.sh once (from a login node with internet) to populate it.
 OLLAMA_BIN=/home/baditya/2025_DDP/inference/bin/ollama
-OLLAMA_MODELS=${GROUP_DIR}/ollama/models
+OLLAMA_MODELS=${GROUP_DIR}/ollama/models   # ← update this path when finalised
 export OLLAMA_MODELS
 export LD_LIBRARY_PATH=/home/baditya/2025_DDP/inference/lib/ollama:$LD_LIBRARY_PATH
