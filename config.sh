@@ -13,7 +13,7 @@ MICROMAMBA_BIN=/opt/rit/el9/20240413/app/linux-rhel9-x86_64_v3/gcc-11.3.1/microm
 # Python environment prefix.
 #   Instructor  : ${GROUP_DIR}/Micromamba_demo
 #   Participants: ${GROUP_DIR}/$USER/mamba_envs/dl_workshop
-ENV_PREFIX=${GROUP_DIR}/Micromamba_demo
+ENV_PREFIX=${GROUP_DIR}/${USER}/mamba_envs/dl_workshop
 
 # Shared data and checkpoint directories
 DATA_DIR=${GROUP_DIR}/${USER}/data

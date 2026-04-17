@@ -15,13 +15,14 @@ echo "Model source : $OLLAMA_MODELS_STAGE"
 echo ""
 
 mkdir -p "$OLLAMA_MODELS"
-
+echo "──────────────────────────────────────"
+echo "Copying models to: $OLLAMA_MODELS"
 rsync -a $OLLAMA_MODELS_STAGE/* $OLLAMA_MODELS/
 
 # Start a temporary server pointing at the model store
 $OLLAMA_BIN serve &
 OLLAMA_PID=$!
-echo "Started ollama serve (PID $OLLAMA_PID)"
+echo "Started temporary ollama server (PID $OLLAMA_PID)"
 echo ""
 echo "──────────────────────────────────────"
 echo "All models stored in: $OLLAMA_MODELS"
@@ -34,4 +35,4 @@ $OLLAMA_BIN list
 # Cleanup
 kill $OLLAMA_PID
 wait $OLLAMA_PID 2>/dev/null
-echo "Server stopped."
+echo "Temporary server stopped."
