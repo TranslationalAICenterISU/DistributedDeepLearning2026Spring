@@ -5,7 +5,7 @@
 #SBATCH --mem=64G
 #SBATCH -p nova
 #SBATCH -A short_term
-#SBATCH -t 01:00:00
+#SBATCH -t 00:30:00
 #SBATCH -o ollama_inference_%j.out
 #SBATCH -e ollama_inference_%j.err
 #SBATCH --gres=gpu:a100-pcie:1
