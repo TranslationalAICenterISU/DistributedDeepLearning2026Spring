@@ -20,6 +20,9 @@ echo "Ollama bin   : $OLLAMA_BIN"
 echo "Model store  : $OLLAMA_MODELS"
 echo ""
 
+# ── Copy models to local scratch ───────────────────────────────────
+$SCRIPT_DIR/copy_models.sh 
+
 # ── Start Ollama server ────────────────────────────────────────────
 $OLLAMA_BIN serve &
 OLLAMA_PID=$!
@@ -31,7 +34,7 @@ sleep 8
 # Run 06_ollama/pull_models.sh once beforehand if not yet downloaded.
 $MICROMAMBA_BIN run -p $ENV_PREFIX \
     python $SCRIPT_DIR/inference.py   \
-        --host     http://localhost:11434 \
+        --host     http://$OLLAMA_HOST \
         --data-dir $DATA_DIR
 
 # ── Clean up ──────────────────────────────────────────────────────
