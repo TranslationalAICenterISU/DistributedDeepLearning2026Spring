@@ -1,37 +1,47 @@
 """
-Module 06 — LLM Inference with Ollama
---------------------------------------
-Ollama is a tool for running large language models locally (or on a
-cluster node) with a simple REST API and Python client.
+Module 06 — Multi-Model LLM Inference with Ollama
+---------------------------------------------------
+Demonstrates three open-weight models, each highlighting a different
+capability tier:
 
-This script demonstrates six usage patterns:
+  Section 1 — gpt-oss:20b
+    OpenAI's open-weight model, optimised for reasoning and agentic tasks.
+    Demos: chain-of-thought reasoning, multi-step task planning.
 
-  1. Check server connectivity and list available models
-  2. Basic single-turn generation
-  3. Streaming output (token by token)
-  4. System prompt (persona / role)
-  5. Multi-turn conversation (chat history)
-  6. Batch queries (multiple prompts in sequence)
+  Section 2 — qwen3.6
+    Qwen3.6, strong at agentic coding and preserving reasoning chains.
+    Demos: code generation, streaming code explanation.
+
+  Section 3 — gemma4  (multimodal)
+    Google Gemma 4, supports image + text inputs.
+    Demos: describe a Fashion MNIST sample, answer a specific visual question.
 
 Prerequisites (handled by inference.sh):
   • ollama serve  is running in the background on localhost:11434
-  • At least one model has been pulled  (default: llama3.2)
+  • All three models have been pulled
 
 Run manually:
-  # In one terminal:  ollama serve
-  # In another:       python inference.py --model llama3.2
+  ollama serve &
+  python inference.py --host http://localhost:11434
 """
 import argparse
+import base64
+import io
+import os
 import sys
 import time
 
 import ollama
 
+GPT_OSS = "gpt-oss:20b"
+QWEN    = "qwen3.6"
+GEMMA   = "gemma4"
+
 
 # ── Utilities ─────────────────────────────────────────────────────
 
 def separator(title=""):
-    width = 60
+    width = 64
     if title:
         pad = (width - len(title) - 2) // 2
         print(f"\n{'─'*pad} {title} {'─'*pad}")
@@ -40,163 +50,280 @@ def separator(title=""):
 
 
 def check_server(host: str) -> bool:
-    """Return True if the Ollama server is reachable."""
     try:
-        client = ollama.Client(host=host)
-        client.list()
+        ollama.Client(host=host).list()
         return True
     except Exception as e:
         print(f"[ERROR] Cannot reach Ollama server at {host}: {e}")
-        print("  Make sure 'ollama serve' is running before launching this script.")
         return False
 
 
-# ── Demo functions ────────────────────────────────────────────────
-
-def demo_list_models(client):
-    separator("1. Available Models")
-    models = client.list()
-    if not models.models:
-        print("  No models pulled yet.  Run:  ollama pull llama3.2")
-        return
-    for m in models.models:
-        size_gb = m.size / 1e9 if hasattr(m, "size") else "?"
-        print(f"  • {m.model:<35}  {size_gb:.1f} GB" if isinstance(size_gb, float)
-              else f"  • {m.model}")
-
-
-def demo_basic_generation(client, model: str):
-    separator("2. Basic Generation")
-    prompt = "In one sentence, explain what a GPU is."
-    print(f"  Prompt : {prompt}")
-    print(f"  Model  : {model}\n")
+def timed_generate(client, model, prompt, stream=False, system=None):
+    """Generate text, return (response_text, tokens, elapsed_s)."""
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
 
     t0 = time.time()
-    response = client.generate(model=model, prompt=prompt)
-    elapsed  = time.time() - t0
-
-    print(f"  Response:\n  {response.response.strip()}")
-    print(f"\n  Tokens generated : {response.eval_count}")
-    print(f"  Time             : {elapsed:.2f}s")
-    print(f"  Tokens / second  : {response.eval_count / elapsed:.1f}")
-
-
-def demo_streaming(client, model: str):
-    separator("3. Streaming Output")
-    prompt = "List three reasons why distributed training is useful for deep learning."
-    print(f"  Prompt : {prompt}")
-    print(f"  Model  : {model}\n")
-    print("  Response (streaming):\n")
-
-    for chunk in client.generate(model=model, prompt=prompt, stream=True):
-        print(chunk.response, end="", flush=True)
-        if chunk.done:
-            break
-    print()
-
-
-def demo_system_prompt(client, model: str):
-    separator("4. System Prompt (Role / Persona)")
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a concise teaching assistant for a university workshop on "
-                "distributed deep learning.  Answer in at most two sentences and "
-                "avoid jargon unless you define it."
-            ),
-        },
-        {
-            "role": "user",
-            "content": "What is the difference between DDP and FSDP in PyTorch?",
-        },
-    ]
-    print(f"  System : {messages[0]['content'][:80]}...")
-    print(f"  User   : {messages[1]['content']}\n")
-
-    response = client.chat(model=model, messages=messages)
-    print(f"  Response:\n  {response.message.content.strip()}")
-
-
-def demo_multi_turn(client, model: str):
-    separator("5. Multi-Turn Conversation")
-    history = []
-
-    turns = [
-        "What is gradient descent?",
-        "How does a learning rate affect it?",
-        "What happens if the learning rate is too large?",
-    ]
-
-    for user_msg in turns:
-        history.append({"role": "user", "content": user_msg})
-        print(f"  User      : {user_msg}")
-
-        response = client.chat(model=model, messages=history)
-        assistant_msg = response.message.content.strip()
-        history.append({"role": "assistant", "content": assistant_msg})
-
-        # Truncate long answers for cleaner demo output
-        display = assistant_msg[:200] + "…" if len(assistant_msg) > 200 else assistant_msg
-        print(f"  Assistant : {display}\n")
-
-
-def demo_batch_queries(client, model: str):
-    separator("6. Batch Queries")
-    prompts = [
-        "What is a tensor?",
-        "What is backpropagation?",
-        "What is the NCCL library used for?",
-    ]
-    print(f"  Running {len(prompts)} prompts sequentially...\n")
-
-    for i, prompt in enumerate(prompts, 1):
-        t0 = time.time()
-        resp = client.generate(model=model, prompt=prompt)
+    if stream:
+        text = ""
+        for chunk in client.chat(model=model, messages=messages, stream=True):
+            delta = chunk.message.content or ""
+            print(delta, end="", flush=True)
+            text += delta
+            if chunk.done:
+                break
+        print()
         elapsed = time.time() - t0
-        answer = resp.response.strip()
-        display = answer[:150] + "…" if len(answer) > 150 else answer
-        print(f"  Q{i}: {prompt}")
-        print(f"  A{i}: {display}")
-        print(f"       ({resp.eval_count} tokens, {elapsed:.2f}s)\n")
+        return text, None, elapsed
+    else:
+        resp = client.chat(model=model, messages=messages)
+        elapsed = time.time() - t0
+        return resp.message.content.strip(), getattr(resp, "eval_count", None), elapsed
+
+
+# ── Section 1: gpt-oss:20b — Reasoning & Agentic Planning ─────────
+
+def demo_gpt_oss(client):
+    print("\n" + "=" * 64)
+    print(f"  SECTION 1 — {GPT_OSS}")
+    print("  Reasoning & Agentic Task Planning")
+    print("=" * 64)
+
+    # 1a. Chain-of-thought reasoning
+    separator("1a. Chain-of-Thought Reasoning")
+    prompt = (
+        "A distributed training job uses 8 GPUs across 2 nodes. "
+        "Each GPU processes a local batch of 32 samples. "
+        "After each backward pass the gradients are all-reduced. "
+        "If the all-reduce bandwidth between nodes is 25 GB/s and each "
+        "gradient tensor is 400 MB, how long does the all-reduce take? "
+        "Show your reasoning step by step."
+    )
+    print(f"  Prompt: {prompt}\n")
+    text, tokens, elapsed = timed_generate(client, GPT_OSS, prompt)
+    print(f"  {text}")
+    print(f"\n  [{elapsed:.1f}s]")
+
+    # 1b. Agentic task planning
+    separator("1b. Agentic Task Decomposition")
+    prompt = (
+        "I want to fine-tune a 7B parameter language model on a custom dataset "
+        "using 4 A100 GPUs. Break this down into concrete numbered steps, "
+        "including data preparation, environment setup, training configuration, "
+        "and evaluation. Be specific about tool choices."
+    )
+    print(f"  Prompt: {prompt}\n")
+    text, tokens, elapsed = timed_generate(client, GPT_OSS, prompt)
+    print(f"  {text}")
+    print(f"\n  [{elapsed:.1f}s]")
+
+
+# ── Section 2: qwen3.6 — Coding & Thinking ────────────────────────
+
+def demo_qwen(client):
+    print("\n" + "=" * 64)
+    print(f"  SECTION 2 — {QWEN}")
+    print("  Agentic Coding & Reasoning Preservation")
+    print("=" * 64)
+
+    # 2a. Code generation
+    separator("2a. Code Generation")
+    prompt = (
+        "Write a Python function `sync_gradients(model, world_size)` that "
+        "manually all-reduces gradients across ranks using torch.distributed. "
+        "Include type hints and a brief docstring. No extra explanation needed."
+    )
+    print(f"  Prompt: {prompt}\n")
+    text, tokens, elapsed = timed_generate(client, QWEN, prompt)
+    print(f"  {text}")
+    print(f"\n  [{elapsed:.1f}s]")
+
+    # 2b. Streaming code explanation
+    separator("2b. Code Explanation (streaming)")
+    code = """
+def save_fsdp_checkpoint(model, save_path, rank):
+    with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT):
+        state = model.state_dict()
+    if rank == 0:
+        torch.save(state, save_path)
+"""
+    prompt = (
+        f"Explain what this PyTorch FSDP checkpoint function does and why "
+        f"`state_dict_type` must be called outside `if rank == 0:`:\n{code}"
+    )
+    print(f"  Prompt: {prompt}\n  Response (streaming):\n")
+    timed_generate(client, QWEN, prompt, stream=True)
+
+    # 2c. Debugging with thinking
+    separator("2c. Bug Identification")
+    buggy_code = """
+# Bug: only rank 0 saves, but state_dict gathering is collective
+if rank == 0:
+    if val_acc > best_acc:
+        save_fsdp_checkpoint(model, ckpt_path, rank)
+"""
+    prompt = (
+        f"Identify the bug in this FSDP training loop snippet and explain "
+        f"how to fix it:\n{buggy_code}"
+    )
+    print(f"  Prompt: {prompt}\n")
+    text, tokens, elapsed = timed_generate(client, QWEN, prompt)
+    print(f"  {text}")
+    print(f"\n  [{elapsed:.1f}s]")
+
+
+# ── Section 3: gemma4 — Multimodal ────────────────────────────────
+
+def load_fashion_mnist_image(data_dir: str):
+    """
+    Return (b64_string, label_name) for the first Fashion MNIST test sample.
+    Falls back to a synthetic matplotlib image if the dataset is not present.
+    """
+    LABELS = [
+        "T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
+        "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot",
+    ]
+
+    # Try loading from torchvision dataset
+    try:
+        from torchvision import datasets
+        from PIL import Image as PILImage
+
+        ds = datasets.FashionMNIST(data_dir, train=False, download=False)
+        img_tensor, label_idx = ds[0]
+        # ds returns a PIL image when no transform is set
+        if not hasattr(img_tensor, "save"):
+            # convert tensor → PIL
+            import torchvision.transforms.functional as TF
+            img_pil = TF.to_pil_image(img_tensor)
+        else:
+            img_pil = img_tensor
+
+        # Upscale for better visibility (28→224)
+        img_pil = img_pil.resize((224, 224), PILImage.NEAREST)
+
+        buf = io.BytesIO()
+        img_pil.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode(), LABELS[label_idx]
+
+    except Exception:
+        pass
+
+    # Fallback: synthetic matplotlib figure
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        fig, ax = plt.subplots(figsize=(3, 3))
+        data = np.random.rand(28, 28)
+        ax.imshow(data, cmap="gray")
+        ax.set_title("Synthetic grayscale image")
+        ax.axis("off")
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=72, bbox_inches="tight")
+        plt.close(fig)
+        return base64.b64encode(buf.getvalue()).decode(), "synthetic"
+
+    except Exception as e:
+        return None, f"(image creation failed: {e})"
+
+
+def demo_gemma(client, data_dir: str):
+    print("\n" + "=" * 64)
+    print(f"  SECTION 3 — {GEMMA}")
+    print("  Multimodal: Vision + Language")
+    print("=" * 64)
+
+    img_b64, label = load_fashion_mnist_image(data_dir)
+
+    if img_b64 is None:
+        print(f"  [SKIP] Could not load image: {label}")
+        return
+
+    source = "Fashion MNIST test set" if label != "synthetic" else "synthetic fallback"
+    print(f"\n  Image source : {source}")
+    if label != "synthetic":
+        print(f"  True label   : {label}  (hidden from model)")
+
+    # 3a. Open-ended description
+    separator("3a. Image Description")
+    prompt = "Describe what you see in this image in two or three sentences."
+    print(f"  Prompt: {prompt}\n")
+    t0 = time.time()
+    resp = client.chat(
+        model=GEMMA,
+        messages=[{
+            "role":    "user",
+            "content": prompt,
+            "images":  [img_b64],
+        }],
+    )
+    elapsed = time.time() - t0
+    print(f"  {resp.message.content.strip()}")
+    print(f"\n  [{elapsed:.1f}s]")
+
+    # 3b. Specific visual question
+    separator("3b. Visual Classification")
+    prompt = (
+        "This is a grayscale image from the Fashion MNIST dataset. "
+        "Which clothing category does it belong to? Choose from: "
+        "T-shirt/top, Trouser, Pullover, Dress, Coat, Sandal, Shirt, "
+        "Sneaker, Bag, Ankle boot. State only the category name and your confidence."
+    )
+    print(f"  Prompt: {prompt}\n")
+    t0 = time.time()
+    resp = client.chat(
+        model=GEMMA,
+        messages=[{
+            "role":    "user",
+            "content": prompt,
+            "images":  [img_b64],
+        }],
+    )
+    elapsed = time.time() - t0
+    print(f"  Model answer : {resp.message.content.strip()}")
+    if label != "synthetic":
+        print(f"  True label   : {label}")
+    print(f"\n  [{elapsed:.1f}s]")
 
 
 # ── Main ──────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Module 06 — Ollama LLM Inference")
-    parser.add_argument("--model",  default="llama3.2",
-                        help="Ollama model name (must be pulled first)")
-    parser.add_argument("--host",   default="http://localhost:11434",
-                        help="Ollama server URL")
-    parser.add_argument("--demos",  default="all",
-                        help="Comma-separated demos to run: list,basic,stream,system,chat,batch "
-                             "or 'all'")
+    parser = argparse.ArgumentParser(description="Module 06 — Multi-Model Ollama Inference")
+    parser.add_argument("--host",     default="http://localhost:11434")
+    parser.add_argument("--data-dir", default="/work/mech-ai/Aditya/data",
+                        help="Path to the Fashion MNIST dataset root (for multimodal demo)")
+    parser.add_argument("--skip",     default="",
+                        help="Comma-separated sections to skip: gpt,qwen,gemma")
     args = parser.parse_args()
 
-    print("=" * 60)
-    print("  Module 06 — LLM Inference with Ollama")
-    print("=" * 60)
-    print(f"  Server : {args.host}")
-    print(f"  Model  : {args.model}")
+    skip = set(s.strip() for s in args.skip.split(",") if s.strip())
+
+    print("=" * 64)
+    print("  Module 06 — Multi-Model LLM Inference with Ollama")
+    print("=" * 64)
+    print(f"  Server   : {args.host}")
+    print(f"  Models   : {GPT_OSS}  |  {QWEN}  |  {GEMMA}")
+    print(f"  Data dir : {args.data_dir}")
 
     if not check_server(args.host):
         sys.exit(1)
 
     client = ollama.Client(host=args.host)
 
-    demos_to_run = (
-        {"list", "basic", "stream", "system", "chat", "batch"}
-        if args.demos == "all"
-        else set(args.demos.split(","))
-    )
+    if "gpt" not in skip:
+        demo_gpt_oss(client)
 
-    if "list"   in demos_to_run: demo_list_models(client)
-    if "basic"  in demos_to_run: demo_basic_generation(client, args.model)
-    if "stream" in demos_to_run: demo_streaming(client, args.model)
-    if "system" in demos_to_run: demo_system_prompt(client, args.model)
-    if "chat"   in demos_to_run: demo_multi_turn(client, args.model)
-    if "batch"  in demos_to_run: demo_batch_queries(client, args.model)
+    if "qwen" not in skip:
+        demo_qwen(client)
+
+    if "gemma" not in skip:
+        demo_gemma(client, args.data_dir)
 
     separator()
     print("  All demos complete.")
