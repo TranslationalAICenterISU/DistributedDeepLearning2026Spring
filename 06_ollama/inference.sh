@@ -21,7 +21,7 @@ echo "Model store  : $OLLAMA_MODELS"
 echo ""
 
 # ── Copy models to local scratch ───────────────────────────────────
-sh $SCRIPT_DIR/copy_models.sh 
+$SCRIPT_DIR/copy_models.sh 
 
 # ── Start Ollama server ────────────────────────────────────────────
 $OLLAMA_BIN serve &
