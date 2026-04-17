@@ -28,6 +28,7 @@ import argparse
 import base64
 import io
 import os
+import subprocess
 import sys
 import time
 
@@ -56,6 +57,53 @@ def check_server(host: str) -> bool:
     except Exception as e:
         print(f"[ERROR] Cannot reach Ollama server at {host}: {e}")
         return False
+
+
+def nvidia_smi_vram() -> str:
+    """Return a compact VRAM summary from nvidia-smi, or empty string if unavailable."""
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi",
+             "--query-gpu=index,name,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        lines = []
+        for row in out.splitlines():
+            idx, name, used, total = [x.strip() for x in row.split(",")]
+            lines.append(f"    GPU {idx} ({name}): {used} / {total} MiB used")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def check_gpu_placement(client: ollama.Client, model_name: str):
+    """
+    Query ollama /api/ps to confirm the model loaded onto VRAM.
+    Prints placement status and current nvidia-smi VRAM usage.
+    """
+    separator("GPU placement check")
+    try:
+        ps = client.ps()
+        loaded = {m.model: m for m in ps.models}
+        # ollama ps uses short names; match on prefix
+        match = next((m for k, m in loaded.items() if model_name.split(":")[0] in k), None)
+        if match:
+            size_gb  = (match.size      or 0) / 1e9
+            vram_gb  = (match.size_vram or 0) / 1e9
+            on_gpu   = vram_gb > 0.1
+            location = "GPU" if on_gpu else "CPU (no VRAM allocated — check GPU availability)"
+            print(f"  Model      : {match.model}")
+            print(f"  Total size : {size_gb:.2f} GB")
+            print(f"  VRAM used  : {vram_gb:.2f} GB  →  [{location}]")
+        else:
+            print(f"  {model_name} not found in ollama ps (may have already been unloaded)")
+    except Exception as e:
+        print(f"  ollama ps failed: {e}")
+
+    vram = nvidia_smi_vram()
+    if vram:
+        print(f"\n  nvidia-smi snapshot:\n{vram}")
 
 
 def timed_generate(client, model, prompt, stream=False, system=None):
@@ -119,6 +167,8 @@ def demo_gpt_oss(client):
     print(f"  {text}")
     print(f"\n  [{elapsed:.1f}s]")
 
+    check_gpu_placement(client, GPT_OSS)
+
 
 # ── Section 2: qwen3.6 — Coding & Thinking ────────────────────────
 
@@ -172,6 +222,8 @@ if rank == 0:
     text, tokens, elapsed = timed_generate(client, QWEN, prompt)
     print(f"  {text}")
     print(f"\n  [{elapsed:.1f}s]")
+
+    check_gpu_placement(client, QWEN)
 
 
 # ── Section 3: gemma4 — Multimodal ────────────────────────────────
@@ -289,6 +341,8 @@ def demo_gemma(client, data_dir: str):
     if label != "synthetic":
         print(f"  True label   : {label}")
     print(f"\n  [{elapsed:.1f}s]")
+
+    check_gpu_placement(client, GEMMA)
 
 
 # ── Main ──────────────────────────────────────────────────────────

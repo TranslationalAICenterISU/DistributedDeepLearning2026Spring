@@ -303,15 +303,56 @@ Demo scenarios:
 5. Multi-turn conversation
 6. Parallel batch queries
 
-**Resources:** 1 GPU (1 × A100-PCIE-40 GB is sufficient for llama3.2-3B)
-**Model store:** `$OLLAMA_MODELS` (set in `config.sh`)
+**Resources:** 1 GPU per run (models run sequentially; 40 GB A100 fits each workshop model)
+**Model store:** `$OLLAMA_MODELS` (set in `config.sh` — pre-populate with `pull_models.sh`)
 
-To switch models, change the `MODEL` variable in `inference.sh`:
+Demo sections:
+
+| Section | Model | Focus |
+|---|---|---|
+| 1 | `gpt-oss:20b` | Chain-of-thought reasoning, agentic task planning |
+| 2 | `qwen3.6` | Code generation, streaming explanation, bug identification |
+| 3 | `gemma4` | Multimodal: describe + classify a Fashion MNIST image |
+
+Each section ends with a GPU placement check (`ollama ps` + `nvidia-smi`) that confirms
+the model loaded into VRAM rather than falling back to CPU.
+
+#### Running a large model that needs the full node
+
+Some models (70B+) exceed a single GPU's memory. Ollama automatically spreads across
+all GPUs visible on the node — you just need to allocate them all in Slurm.
+
+**Option A — single node, all 4 GPUs (A100, `deepl` reservation):**
+
 ```bash
-MODEL=llama3.2          # 3B — fast, fits on 40 GB
-MODEL=llama3.1:8b       # 8B — better quality, still fits on 40 GB
-MODEL=llama3.3:70b      # 70B — requires 80 GB (use ach partition)
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=128G
+#SBATCH -p nova
+#SBATCH -A short_term
+#SBATCH --reservation=deepl        # workshop reservation, April 20 only
+#SBATCH --gres=gpu:a100:4          # give Ollama all 4 GPUs (4 × 40 GB = 160 GB total)
+#SBATCH -t 00:30:00
 ```
+
+Ollama sees all four GPUs via `CUDA_VISIBLE_DEVICES` and shards the model weights
+across them automatically — no code changes needed.
+
+**Option B — single node, all 8 RTX Pro 6000 (`nova26-gpu-1`):**
+
+```bash
+#SBATCH --nodelist=nova26-gpu-1
+#SBATCH --gres=gpu:rtx_pro_6000:8  # 8 × 48 GB = 384 GB total VRAM
+```
+
+**Rough VRAM requirements by model size (Q4 quantisation):**
+
+| Parameters | VRAM needed | Fits on |
+|---|---|---|
+| 7 B | ~5 GB | any single A100 |
+| 20 B | ~12 GB | any single A100 |
+| 70 B | ~40 GB | 1 × A100-80G or 2 × A100-40G |
+| 405 B | ~230 GB | 6 × A100-40G or 3 × A100-80G |
 
 ---
 
