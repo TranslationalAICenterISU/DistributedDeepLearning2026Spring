@@ -7,7 +7,7 @@
 #   bash 06_ollama/pull_models.sh
 
 set -e
-source config.sh
+source ../config.sh
 
 echo "Ollama bin   : $OLLAMA_BIN"
 echo "Model store  : $OLLAMA_MODELS"
